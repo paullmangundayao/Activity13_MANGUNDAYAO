@@ -1,0 +1,131 @@
+---
+# NTP (Chrony)
+- name: Install Chrony package
+  yum:
+	name: chrony
+	state: present
+
+- name: Enable Chrony service at boot
+  systemd:
+	name: chronyd
+	enabled: yes
+
+- name: Start Chrony service
+  systemd:
+	name: chronyd
+	state: started
+    
+# Open Stack
+- name: Install CentOS OpenStack Train release
+  yum:
+	name: centos-release-openstack-train
+	state: present
+
+- name: Upgrade packages on all nodes
+  yum:
+	name: '*'
+	state: latest
+
+- name: Install python-openstackclient
+  yum:
+	name: python-openstackclient
+	state: present
+
+- name: Install openstack-selinux
+  yum:
+	name: openstack-selinux
+	state: present
+
+#SQL Database
+- name: Install MariaDB and Python packages on CentOS
+  yum:
+	name: "{{ item }}"
+	state: present
+  loop:
+	- mariadb-server
+	- python3-PyMySQL
+
+- name: Ensure the directory structure exists for MariaDB configuration file
+  file:
+	path: /etc/my.cnf.d
+	state: directory
+
+- name: Create the MariaDB configuration file on CentOS
+  copy:
+	dest: /etc/my.cnf.d/99-openstack.cnf
+	content: |
+  	[mysqld]
+  	bind-address = 10.0.0.11
+  	default-storage-engine = innodb
+  	innodb_file_per_table = on
+  	max_connections = 4096
+  	collation-server = utf8_general_ci
+  	character-set-server = utf8
+
+# Message Queue
+- name: Install RabbitMQ package
+  yum:
+	name: rabbitmq-server
+	state: present
+
+- name: Enable and start RabbitMQ service
+  systemd:
+	name: rabbitmq-server
+	enabled: yes
+	state: started
+
+- name: Set permissions for openstack user
+  command: rabbitmqctl set_permissions openstack ".*" ".*" ".*"
+ 
+# Memcached
+- name: Install Memcached package
+  yum:
+	name: "{{ item }}"
+	state: present
+  with_items:
+	- memcached
+	- python-memcached
+
+- name: Configure Memcached service
+  lineinfile:
+	path: /etc/sysconfig/memcached
+	line: 'OPTIONS="-l 127.0.0.1,::1,controller"'
+
+- name: Enable and start Memcached service
+  systemd:
+	name: memcached
+	enabled: yes
+	state: started
+
+- name: Restart Memcached
+  systemd:
+	name: memcached
+	state: restarted
+    
+# ETCD
+- name: Install etcd package
+  yum:
+	name: etcd
+	state: present
+
+- name: Configure etcd
+  blockinfile:
+	path: /etc/etcd/etcd.conf
+	block: |
+  	#[Member]
+  	ETCD_DATA_DIR="/var/lib/etcd/default.etcd"
+  	ETCD_LISTEN_PEER_URLS="http://{{ ansible_default_ipv4.address }}:2380"
+  	ETCD_LISTEN_CLIENT_URLS="http://{{ ansible_default_ipv4.address }}:2379"
+  	ETCD_NAME="controller"
+  	#[Clustering]
+  	ETCD_INITIAL_ADVERTISE_PEER_URLS="http://{{ ansible_default_ipv4.address }}:2380"
+  	ETCD_ADVERTISE_CLIENT_URLS="http://{{ ansible_default_ipv4.address }}:2379"
+  	ETCD_INITIAL_CLUSTER="controller=http://{{ ansible_default_ipv4.address }}:2380"
+  	ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster-01"
+  	ETCD_INITIAL_CLUSTER_STATE="new"
+
+- name: Enable and start etcd service
+  systemd:
+	name: etcd
+	enabled: yes
+	state: started
